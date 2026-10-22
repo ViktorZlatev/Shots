@@ -11,19 +11,115 @@
  *
  * Library: TMRh20/RF24  (Tools > Manage Libraries > search "RF24")
  *
- * Wiring (nRF24L01 -> Arduino Nano):
- *   VCC  -> 3.3V   (NOT 5V - 5V will damage the module)
- *   GND  -> GND
- *   CE   -> D9
- *   CSN  -> D10
- *   SCK  -> D13
- *   MOSI -> D11
- *   MISO -> D12
- *   IRQ  -> not connected
+ * ======================================================================
+ *  HARDWARE SECTION  (build this on BOTH Arduinos - the wiring is identical)
+ * ======================================================================
  *
- * Tip: solder a 10uF capacitor across the module's VCC and GND pins.
- * The nRF24L01 draws current spikes when transmitting and the Nano's
- * 3.3V regulator is weak; a missing cap is the #1 cause of "it won't talk".
+ *  PARTS PER ARDUINO
+ *    - 1x Arduino Nano
+ *    - 1x nRF24L01 radio module (with its antenna)
+ *    - 1x red LED    (TX  = "I am transmitting")
+ *    - 1x green LED  (RX  = "I received a message")
+ *    - 2x resistor 220-330 ohm (one per LED, REQUIRED)
+ *    - 1x buzzer (active or passive)
+ *    - 1x capacitor 10uF (strongly recommended, for the radio)
+ *    - breadboard + jumper wires
+ *
+ *  PIN SUMMARY (Nano pin -> what it connects to)
+ *    D2   -> TX LED   (through a resistor)
+ *    D3   -> RX LED   (through a resistor)
+ *    D4   -> Buzzer +
+ *    D9   -> nRF24 CE
+ *    D10  -> nRF24 CSN
+ *    D11  -> nRF24 MOSI
+ *    D12  -> nRF24 MISO
+ *    D13  -> nRF24 SCK
+ *    3.3V -> nRF24 VCC   (NOT 5V!)
+ *    GND  -> nRF24 GND, both LED cathodes, Buzzer -
+ *
+ *  1) nRF24L01 RADIO MODULE
+ *     !! Power it from the Nano's 3.3V pin. 5V WILL DESTROY the module. !!
+ *     (The signal pins are 5V tolerant, so no level shifter is needed.)
+ *
+ *       nRF24 pin   ->  Nano pin
+ *       ---------       --------
+ *       GND         ->  GND
+ *       VCC         ->  3.3V
+ *       CE          ->  D9
+ *       CSN         ->  D10
+ *       SCK         ->  D13
+ *       MOSI        ->  D11
+ *       MISO        ->  D12
+ *       IRQ         ->  not connected
+ *
+ *     Typical 8-pin header layout, looking at the module from above with
+ *     the antenna pointing away from you (pin 1 = GND is marked by a
+ *     square pad / arrow on most boards - always check YOUR board's labels):
+ *
+ *                     antenna
+ *                 +---------------+
+ *          GND  1 | [GND]  [VCC]  | 2  VCC
+ *          CE   3 | [CE ]  [CSN]  | 4  CSN
+ *          SCK  5 | [SCK]  [MOSI] | 6  MOSI
+ *          MISO 7 | [MISO] [IRQ]  | 8  IRQ
+ *                 +---------------+
+ *
+ *     Capacitor: put the 10uF capacitor directly across the module's
+ *     VCC and GND pins (as close to the module as possible). The long leg
+ *     (+) goes to VCC, the stripe/short leg (-) goes to GND.
+ *     The radio draws sharp current spikes when it transmits and the
+ *     Nano's 3.3V regulator is weak. A missing capacitor is the #1 cause
+ *     of "NO ACK" / "radio not responding".
+ *
+ *     Antenna: keep the module/antenna away from metal and away from the
+ *     USB cable. If you use a high-power PA+LNA module (the one with the
+ *     big external antenna), it needs MORE current than the Nano's 3.3V
+ *     pin can give - power it from an nRF24 adapter board with its own
+ *     3.3V regulator, or you will get random failures.
+ *
+ *  2) TX LED (red) - lights when this Arduino transmits
+ *     An LED has two legs: the LONG leg is the anode (+), the SHORT leg
+ *     (flat side of the case) is the cathode (-). It only works one way round.
+ *
+ *       Nano D2 ---[ 220-330 ohm resistor ]---> LED long leg (+)
+ *       LED short leg (-) -----------------------> GND
+ *
+ *     The resistor is REQUIRED. Without it the LED (and the Nano pin)
+ *     can burn out. It can go on either side of the LED.
+ *
+ *  3) RX LED (green) - lights when this Arduino receives a message
+ *     Same as the TX LED, on pin D3:
+ *
+ *       Nano D3 ---[ 220-330 ohm resistor ]---> LED long leg (+)
+ *       LED short leg (-) -----------------------> GND
+ *
+ *  4) BUZZER - beeps when a message is received
+ *     Look for a "+" mark on the buzzer (the longer leg is also +).
+ *
+ *       Nano D4 -----------------------> Buzzer +
+ *       Buzzer - ----------------------> GND
+ *
+ *     Active buzzers (beep by themselves) and passive buzzers (need a
+ *     tone signal) both work with this sketch. Use a small buzzer that
+ *     draws under ~20 mA, because it is driven directly from the pin.
+ *     A big or loud buzzer needs a transistor - do not connect it directly.
+ *
+ *  GROUND: everything shares the same ground. On a breadboard, run one
+ *  wire from the Nano's GND to the breadboard's blue (-) rail and plug all
+ *  the GND connections (radio, both LEDs, buzzer, capacitor) into that rail.
+ *
+ *  WIRING CHECK before powering on:
+ *    [ ] Radio VCC is on 3.3V, NOT 5V
+ *    [ ] Capacitor is across the radio's VCC and GND (right polarity)
+ *    [ ] Both LEDs have a resistor and the long leg faces the Nano pin
+ *    [ ] Buzzer + goes to D4, - goes to GND
+ *    [ ] Every GND is connected together
+ *
+ *  POWER-ON TEST: when you plug it in, both LEDs should light and the
+ *  buzzer should beep once for about 0.3 seconds. If that happens, the
+ *  LEDs and buzzer are wired correctly. If the Serial Monitor then says
+ *  "Radio hardware not responding", re-check the radio wiring and capacitor.
+ * ======================================================================
  */
 
 #include <SPI.h>
@@ -158,3 +254,4 @@ void sendMessage(const char *msg) {
   Serial.print(ok ? F(">> sent: ") : F(">> FAILED after retries (is the other node on?): "));
   Serial.println((char *)&packet[1]);
 }
+     
