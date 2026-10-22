@@ -23,7 +23,7 @@ void setup() {
     radio.setPayloadSize(5);       // Set payload size to 5 bytes
     radio.setAddressWidth(3);      // Set address width to 3 bytes
     radio.setPALevel(RF24_PA_MAX, true); // Set power amplification to maximum
-    radio.setDataRate(RF24_250); // Set data rate to 2 Mbps
+    radio.setDataRate(RF24_2MBPS); // Set data rate to 2 Mbps
     radio.setCRCLength(RF24_CRC_DISABLED); // Disable CRC
     radio.printPrettyDetails();    // Print radio details for debugging
     radio.startConstCarrier(RF24_PA_MAX, i);  // Start continuous carrier with specified channel
