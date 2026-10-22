@@ -1,0 +1,25 @@
+Installing the RF24 library for Arduino
+
+#include "RF24.h" comes from the RF24 library by TMRh20. You install it once, and every sketch can use it afterwards.
+
+Option 1: Library Manager (recommended)
+Open the Arduino IDE.
+Go to Sketch → Include Library → Manage Libraries…. You can also click the books icon in the left sidebar, or press Ctrl+Shift+I.
+In the search box, type RF24.
+Find “RF24” by TMRh20. Make sure it’s that one, because other libraries have similar names.
+Click Install, wait for it to finish, then close the window.
+Option 2: Manual install from GitHub
+
+Use this if the Library Manager isn’t working or you’re offline.
+
+Go to https://github.com/nRF24/RF24.
+Click Code → Download ZIP.
+In the Arduino IDE, go to Sketch → Include Library → Add .ZIP Library… and select the file you downloaded.
+Check that it worked
+Go to File → Examples.
+You should see an RF24 entry in the list.
+Open RF24 → GettingStarted and click Verify (the checkmark). If it compiles without an error about RF24.h, the library is installed.
+Common problems
+RF24.h: No such file or directory: the library isn’t installed, or you installed a different one. Repeat the steps above.
+Library installed but the sketch still fails: restart the Arduino IDE.
+Wrong board: under Tools → Board, pick Arduino Nano and set the right Port. For some clone Nanos you also need Processor → ATmega328P (Old Bootloader).
