@@ -1,264 +1,168 @@
 /*
- * nRF24L01 Serial Bridge  --  PC <-> Arduino <-> radio <-> Arduino <-> PC
+ * STEP 1 - HARDWARE + RADIO LINK TEST   (flash this BEFORE radio_chat)
  *
  * Flash this SAME sketch onto BOTH Arduino Nanos.
- * On ONE of them, change the line below to:   #define NODE 1
- * Leave the other as:                          #define NODE 0
+ * On ONE of them set:  #define NODE 1   (leave the other at NODE 0)
  *
- * Then open the Arduino Serial Monitor on each PC at 115200 baud,
- * set the line ending to "Newline", type a message, hit Enter,
- * and it appears on the other PC.
+ * What it does:
+ *   1. Blinks the TX LED, then the RX LED, then beeps  -> proves LEDs + buzzer work
+ *   2. Checks the nRF24 chip answers over SPI           -> proves radio wiring/power
+ *   3. Every second each board sends one packet to the other and prints:
+ *        sent / acked / received
+ *      If both boards show acked ~= sent and received is growing, the link works
+ *      in BOTH directions and you can move on to radio_chat.
  *
- * Library: TMRh20/RF24  (Tools > Manage Libraries > search "RF24")
+ * Open the Serial Monitor at 115200 baud.
+ * Library: "RF24" by TMRh20 (Tools > Manage Libraries), version 1.4.x or newer.
  *
  * ======================================================================
- *  HARDWARE SECTION  (build this on BOTH Arduinos - the wiring is identical)
+ *  HARDWARE SECTION (identical on BOTH Arduinos)
  * ======================================================================
  *
  *  PARTS PER ARDUINO
- *    - 1x Arduino Nano
- *    - 1x nRF24L01 radio module (with its antenna)
- *    - 1x red LED    (TX  = "I am transmitting")
- *    - 1x green LED  (RX  = "I received a message")
- *    - 2x resistor 220-330 ohm (one per LED, REQUIRED)
- *    - 1x buzzer (active or passive)
- *    - 1x capacitor 10uF (strongly recommended, for the radio)
- *    - breadboard + jumper wires
+ *    1x Arduino Nano, 1x nRF24L01 module, 1x red LED (TX), 1x green LED (RX),
+ *    2x resistor 220-330 ohm, 1x small buzzer, 1x capacitor 10uF (or bigger),
+ *    breadboard + jumper wires.
  *
- *  PIN SUMMARY (Nano pin -> what it connects to)
- *    D2   -> TX LED   (through a resistor)
- *    D3   -> RX LED   (through a resistor)
+ *  PIN SUMMARY
+ *    D2   -> TX LED (through a resistor)
+ *    D3   -> RX LED (through a resistor)
  *    D4   -> Buzzer +
  *    D9   -> nRF24 CE
  *    D10  -> nRF24 CSN
  *    D11  -> nRF24 MOSI
  *    D12  -> nRF24 MISO
  *    D13  -> nRF24 SCK
- *    3.3V -> nRF24 VCC   (NOT 5V!)
- *    GND  -> nRF24 GND, both LED cathodes, Buzzer -
+ *    3.3V -> nRF24 VCC      (NEVER 5V - it destroys the module)
+ *    GND  -> nRF24 GND, LED short legs, Buzzer -, capacitor -
  *
- *  1) nRF24L01 RADIO MODULE
- *     !! Power it from the Nano's 3.3V pin. 5V WILL DESTROY the module. !!
- *     (The signal pins are 5V tolerant, so no level shifter is needed.)
+ *  nRF24L01:   GND->GND   VCC->3.3V   CE->D9   CSN->D10
+ *              SCK->D13   MOSI->D11   MISO->D12   IRQ->(not connected)
  *
- *       nRF24 pin   ->  Nano pin
- *       ---------       --------
- *       GND         ->  GND
- *       VCC         ->  3.3V
- *       CE          ->  D9
- *       CSN         ->  D10
- *       SCK         ->  D13
- *       MOSI        ->  D11
- *       MISO        ->  D12
- *       IRQ         ->  not connected
+ *              antenna side (top)
+ *            +------------------+
+ *      GND 1 | [GND]  [VCC]     | 2 VCC
+ *       CE 3 | [CE ]  [CSN]     | 4 CSN
+ *      SCK 5 | [SCK]  [MOSI]    | 6 MOSI
+ *     MISO 7 | [MISO] [IRQ]     | 8 IRQ
+ *            +------------------+
+ *      (check the labels printed on YOUR module - layouts vary)
  *
- *     Typical 8-pin header layout, looking at the module from above with
- *     the antenna pointing away from you (pin 1 = GND is marked by a
- *     square pad / arrow on most boards - always check YOUR board's labels):
+ *  Capacitor: 10uF (or 100uF) directly across the radio's VCC and GND, as
+ *  close to the module as possible. Long leg (+) to VCC, stripe (-) to GND.
+ *  Without it the radio browns out when it transmits - the #1 cause of
+ *  "it receives but can't send" and lost acknowledgements.
  *
- *                     antenna
- *                 +---------------+
- *          GND  1 | [GND]  [VCC]  | 2  VCC
- *          CE   3 | [CE ]  [CSN]  | 4  CSN
- *          SCK  5 | [SCK]  [MOSI] | 6  MOSI
- *          MISO 7 | [MISO] [IRQ]  | 8  IRQ
- *                 +---------------+
+ *  LEDs (long leg = +, short leg = -). The resistor is REQUIRED.
+ *    D2 --[220-330 ohm]--> red LED long leg,   short leg --> GND
+ *    D3 --[220-330 ohm]--> green LED long leg, short leg --> GND
  *
- *     Capacitor: put the 10uF capacitor directly across the module's
- *     VCC and GND pins (as close to the module as possible). The long leg
- *     (+) goes to VCC, the stripe/short leg (-) goes to GND.
- *     The radio draws sharp current spikes when it transmits and the
- *     Nano's 3.3V regulator is weak. A missing capacitor is the #1 cause
- *     of "NO ACK" / "radio not responding".
+ *  Buzzer (small one, under ~20 mA, active or passive):
+ *    D4 --> Buzzer +        Buzzer - --> GND
  *
- *     Antenna: keep the module/antenna away from metal and away from the
- *     USB cable. If you use a high-power PA+LNA module (the one with the
- *     big external antenna), it needs MORE current than the Nano's 3.3V
- *     pin can give - power it from an nRF24 adapter board with its own
- *     3.3V regulator, or you will get random failures.
- *
- *  2) TX LED (red) - lights when this Arduino transmits
- *     An LED has two legs: the LONG leg is the anode (+), the SHORT leg
- *     (flat side of the case) is the cathode (-). It only works one way round.
- *
- *       Nano D2 ---[ 220-330 ohm resistor ]---> LED long leg (+)
- *       LED short leg (-) -----------------------> GND
- *
- *     The resistor is REQUIRED. Without it the LED (and the Nano pin)
- *     can burn out. It can go on either side of the LED.
- *
- *  3) RX LED (green) - lights when this Arduino receives a message
- *     Same as the TX LED, on pin D3:
- *
- *       Nano D3 ---[ 220-330 ohm resistor ]---> LED long leg (+)
- *       LED short leg (-) -----------------------> GND
- *
- *  4) BUZZER - beeps when a message is received
- *     Look for a "+" mark on the buzzer (the longer leg is also +).
- *
- *       Nano D4 -----------------------> Buzzer +
- *       Buzzer - ----------------------> GND
- *
- *     Active buzzers (beep by themselves) and passive buzzers (need a
- *     tone signal) both work with this sketch. Use a small buzzer that
- *     draws under ~20 mA, because it is driven directly from the pin.
- *     A big or loud buzzer needs a transistor - do not connect it directly.
- *
- *  GROUND: everything shares the same ground. On a breadboard, run one
- *  wire from the Nano's GND to the breadboard's blue (-) rail and plug all
- *  the GND connections (radio, both LEDs, buzzer, capacitor) into that rail.
- *
- *  WIRING CHECK before powering on:
- *    [ ] Radio VCC is on 3.3V, NOT 5V
- *    [ ] Capacitor is across the radio's VCC and GND (right polarity)
- *    [ ] Both LEDs have a resistor and the long leg faces the Nano pin
- *    [ ] Buzzer + goes to D4, - goes to GND
- *    [ ] Every GND is connected together
- *
- *  POWER-ON TEST: when you plug it in, both LEDs should light and the
- *  buzzer should beep once for about 0.3 seconds. If that happens, the
- *  LEDs and buzzer are wired correctly. If the Serial Monitor then says
- *  "Radio hardware not responding", re-check the radio wiring and capacitor.
+ *  All grounds must be connected together (use the breadboard GND rail).
+ *  Keep the two boards 1-2 metres apart while testing (too close can
+ *  overload the receivers).
  * ======================================================================
  */
 
 #include <SPI.h>
-#include "RF24.h"
+#include <RF24.h>
 
-#define NODE 0            // <-- set to 1 on the second Arduino
+#define NODE 0                         // <-- 0 on one board, 1 on the other
 
-RF24 radio(9, 10);        // CE, CSN
+const uint8_t PIN_CE      = 9;
+const uint8_t PIN_CSN     = 10;
+const uint8_t PIN_TX_LED  = 2;
+const uint8_t PIN_RX_LED  = 3;
+const uint8_t PIN_BUZZER  = 4;
 
-// Indicators (LEDs need a 220-330 ohm resistor in series, long leg toward the pin)
-const byte TX_LED_PIN = 2;   // lights up while/after we transmit
-const byte RX_LED_PIN = 3;   // lights up when a message arrives
-const byte BUZZER_PIN = 4;   // beeps when a message arrives (+ to D4, - to GND)
+RF24 radio(PIN_CE, PIN_CSN);
 
-const unsigned int LED_ON_MS = 150;     // how long an LED stays lit so you can actually see it
-const unsigned int BEEP_HZ = 2000;
-const unsigned int BEEP_MS = 120;
+// Each node listens on its own address and writes to the other's.
+const uint8_t ADDR[2][6] = { "1Node", "2Node" };
+const uint8_t CHANNEL = 76;
 
-unsigned long txLedOffAt = 0;
-unsigned long rxLedOffAt = 0;
-
-// Two 5-byte addresses. Each node LISTENS on one and WRITES to the other.
-const byte addr0[6] = "NODE0";
-const byte addr1[6] = "NODE1";
-
-const byte channel = 76;  // 0..125. Pick the same one on both. 76 is a quiet default.
-
-char outBuf[30];          // message being typed in from the PC (max 29 chars + null)
-byte outLen = 0;
-
-byte txSeq = 0;           // sequence number of the last packet we sent
-byte lastRxSeq = 0;       // sequence number of the last packet we accepted
+uint32_t sent = 0, acked = 0, received = 0;
+unsigned long nextSendAt = 0;
+unsigned long txLedOffAt = 0, rxLedOffAt = 0;
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) { }     // wait for the USB serial port (harmless on a Nano)
-  randomSeed(analogRead(A0) + NODE);  // different backoff pattern on each node
+  pinMode(PIN_TX_LED, OUTPUT);
+  pinMode(PIN_RX_LED, OUTPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
 
-  pinMode(TX_LED_PIN, OUTPUT);
-  pinMode(RX_LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
+  Serial.print(F("HW test, I am NODE "));
+  Serial.println(NODE);
 
-  // Short power-on self test: both LEDs + a beep, so you know the wiring works
-  digitalWrite(TX_LED_PIN, HIGH);
-  digitalWrite(RX_LED_PIN, HIGH);
-  tone(BUZZER_PIN, BEEP_HZ, BEEP_MS);
-  delay(300);
-  digitalWrite(TX_LED_PIN, LOW);
-  digitalWrite(RX_LED_PIN, LOW);
+  // --- LED and buzzer test ---
+  Serial.println(F("TX LED..."));
+  digitalWrite(PIN_TX_LED, HIGH); delay(400); digitalWrite(PIN_TX_LED, LOW);
+  Serial.println(F("RX LED..."));
+  digitalWrite(PIN_RX_LED, HIGH); delay(400); digitalWrite(PIN_RX_LED, LOW);
+  Serial.println(F("Buzzer..."));
+  tone(PIN_BUZZER, 2000, 200); delay(400);
 
+  // --- Radio test ---
   if (!radio.begin()) {
-    Serial.println(F("Radio hardware not responding - check wiring/power!"));
-    while (1) { }         // stop here; nothing works without the radio
+    Serial.println(F("RADIO NOT RESPONDING: check wiring (CE=D9 CSN=D10 SCK=D13 MOSI=D11 MISO=D12), 3.3V power, capacitor."));
+    while (1) { }
+  }
+  if (!radio.isChipConnected()) {
+    Serial.println(F("SPI answers but the nRF24 chip is not recognised: check wiring / power / module."));
+    while (1) { }
   }
 
-  radio.setChannel(channel);
-  radio.setPALevel(RF24_PA_LOW);      // LOW is plenty on a bench; raise later if needed
-  radio.setDataRate(RF24_1MBPS);      // 1 Mbps: far more reliable than 250 kbps on cheap/clone modules
-  radio.setAddressWidth(5);           // explicit, so both sides always agree
-  radio.setCRCLength(RF24_CRC_16);    // explicit 16-bit CRC on both sides
-  radio.setPayloadSize(32);           // fixed 32-byte packets
-  radio.setAutoAck(true);             // automatic acknowledgements = reliable delivery
-  radio.setRetries(5, 15);            // retry on failure
+  radio.setChannel(CHANNEL);
+  radio.setPALevel(RF24_PA_LOW);
+  radio.setDataRate(RF24_1MBPS);
+  radio.setAddressWidth(5);
+  radio.setCRCLength(RF24_CRC_16);
+  radio.setAutoAck(true);
+  radio.setRetries(5, 15);
+  radio.setPayloadSize(32);
+  radio.openWritingPipe(ADDR[1 - NODE]);       // talk to the other node
+  radio.openReadingPipe(1, ADDR[NODE]);        // listen on my own address
+  radio.startListening();
 
-#if NODE == 0
-  radio.openWritingPipe(addr1);       // node 0 writes to node 1
-  radio.openReadingPipe(1, addr0);    // node 0 listens on its own address
-#else
-  radio.openWritingPipe(addr0);       // node 1 writes to node 0
-  radio.openReadingPipe(1, addr1);
-#endif
-
-  radio.startListening();             // default state: receiving
-  radio.printPrettyDetails();         // dump the radio's settings: both nodes should match except the addresses
-  Serial.print(F("Bridge ready. I am NODE "));
-  Serial.println(NODE);
-  Serial.println(F("Type a message and press Enter."));
+  radio.printPrettyDetails();
+  randomSeed(analogRead(A0) + NODE);
+  Serial.println(F("Radio OK. Starting link test (one packet per second)..."));
 }
 
 void loop() {
-  // ---- 1) Receive: anything on the air -> print to this PC ----
-  if (radio.available()) {
-    byte in[32];
-    radio.read(&in, sizeof(in));
-    in[31] = '\0';                    // make sure it's null-terminated before printing
-    // in[0] = sequence number, in[1..] = text. A repeated number means the
-    // sender retried because our ACK was lost, so skip the duplicate.
-    if (in[0] != lastRxSeq) {
-      lastRxSeq = in[0];
-      Serial.print(F("<< "));
-      Serial.println((char *)&in[1]);
-
-      digitalWrite(RX_LED_PIN, HIGH);
-      rxLedOffAt = millis() + LED_ON_MS;
-      tone(BUZZER_PIN, BEEP_HZ, BEEP_MS);   // non-blocking: stops by itself
-    }
-  }
-
-  // ---- Turn the LEDs back off once their time is up ----
   unsigned long now = millis();
-  if (digitalRead(RX_LED_PIN) && (long)(now - rxLedOffAt) >= 0) digitalWrite(RX_LED_PIN, LOW);
-  if (digitalRead(TX_LED_PIN) && (long)(now - txLedOffAt) >= 0) digitalWrite(TX_LED_PIN, LOW);
 
-  // ---- 2) Send: anything typed on this PC -> over the air ----
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\n' || c == '\r' || outLen == sizeof(outBuf) - 1) {
-      if (outLen > 0) {
-        outBuf[outLen] = '\0';
-        sendMessage(outBuf);
-        outLen = 0;
-      }
-    } else {
-      outBuf[outLen++] = c;
-    }
+  // --- receive ---
+  while (radio.available()) {
+    uint8_t buf[32];
+    radio.read(buf, sizeof(buf));
+    received++;
+    digitalWrite(PIN_RX_LED, HIGH);
+    rxLedOffAt = now + 100;
   }
-}
 
-void sendMessage(const char *msg) {
-  byte packet[32];
-  memset(packet, 0, sizeof(packet));
-  packet[0] = ++txSeq;                // sequence number (lets the receiver drop duplicates)
-  strncpy((char *)&packet[1], msg, sizeof(packet) - 2);
+  // --- send one packet per second (with a little random jitter) ---
+  if ((long)(now - nextSendAt) >= 0) {
+    uint8_t buf[32] = { 0 };
+    buf[0] = (uint8_t)sent;
+    digitalWrite(PIN_TX_LED, HIGH);
+    radio.stopListening();
+    bool ok = radio.write(buf, sizeof(buf));
+    radio.startListening();
+    txLedOffAt = millis() + 100;
+    sent++;
+    if (ok) acked++;
 
-  bool ok = false;
-  for (byte attempt = 0; attempt < 4 && !ok; attempt++) {
-    digitalWrite(TX_LED_PIN, HIGH);
-    radio.stopListening();            // switch to transmit mode
-    ok = radio.write(&packet, sizeof(packet));  // 5 hardware retries happen in here
-    radio.startListening();           // switch straight back to receive
-    if (!ok) delay(random(5, 40));    // random backoff so two nodes don't collide in lockstep
+    Serial.print(F("sent "));     Serial.print(sent);
+    Serial.print(F("  acked "));   Serial.print(acked);
+    Serial.print(F("  received ")); Serial.print(received);
+    Serial.println(ok ? F("   [ack ok]") : F("   [NO ACK]"));
+
+    nextSendAt = millis() + 1000 + random(0, 200);
   }
-  txLedOffAt = millis() + LED_ON_MS;  // keep the TX LED lit a moment so a quick send is visible
 
-  if (!ok) {
-    radio.flush_tx();                 // clear anything stuck in the transmit buffer
-    Serial.print(F(">> NO ACK (it may STILL have arrived - the ACK can be lost). Radio chip "));
-    Serial.println(radio.isChipConnected() ? F("responds.") : F("NOT responding: check wiring/power!"));
-  }
-  Serial.print(ok ? F(">> sent: ") : F(">> tried: "));
-  Serial.println((char *)&packet[1]);
+  if ((long)(now - txLedOffAt) >= 0) digitalWrite(PIN_TX_LED, LOW);
+  if ((long)(now - rxLedOffAt) >= 0) digitalWrite(PIN_RX_LED, LOW);
 }
