@@ -177,7 +177,9 @@ void setup() {
 
   radio.setChannel(channel);
   radio.setPALevel(RF24_PA_LOW);      // LOW is plenty on a bench; raise later if needed
-  radio.setDataRate(RF24_250KBPS);    // slowest rate = best range/reliability
+  radio.setDataRate(RF24_1MBPS);      // 1 Mbps: far more reliable than 250 kbps on cheap/clone modules
+  radio.setAddressWidth(5);           // explicit, so both sides always agree
+  radio.setCRCLength(RF24_CRC_16);    // explicit 16-bit CRC on both sides
   radio.setPayloadSize(32);           // fixed 32-byte packets
   radio.setAutoAck(true);             // automatic acknowledgements = reliable delivery
   radio.setRetries(5, 15);            // retry on failure
@@ -191,6 +193,7 @@ void setup() {
 #endif
 
   radio.startListening();             // default state: receiving
+  radio.printPrettyDetails();         // dump the radio's settings: both nodes should match except the addresses
   Serial.print(F("Bridge ready. I am NODE "));
   Serial.println(NODE);
   Serial.println(F("Type a message and press Enter."));
@@ -251,7 +254,11 @@ void sendMessage(const char *msg) {
   }
   txLedOffAt = millis() + LED_ON_MS;  // keep the TX LED lit a moment so a quick send is visible
 
-  Serial.print(ok ? F(">> sent: ") : F(">> FAILED after retries (is the other node on?): "));
+  if (!ok) {
+    radio.flush_tx();                 // clear anything stuck in the transmit buffer
+    Serial.print(F(">> NO ACK (it may STILL have arrived - the ACK can be lost). Radio chip "));
+    Serial.println(radio.isChipConnected() ? F("responds.") : F("NOT responding: check wiring/power!"));
+  }
+  Serial.print(ok ? F(">> sent: ") : F(">> tried: "));
   Serial.println((char *)&packet[1]);
 }
-     
