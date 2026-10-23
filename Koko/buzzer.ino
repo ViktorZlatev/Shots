@@ -1,3 +1,6 @@
+// Connect + to Pin 8
+// Connect -to Pin GND
+
 const int buzzerPin = 8;
 
 // How long each note lasts, in "beat" units (1 = short, 2 = normal, 4 = long)
